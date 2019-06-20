@@ -61,8 +61,8 @@ def greet_new_user(message):
 
 @bot.message_handler(content_types=['text'])
 def process_amount(message):
-    if message.text.isdigit():
-        half_of_amount = str(float(message.text) / 2)
+    if is_float(message.text):
+        half_of_amount = str(float(message.text.replace(",", ".")) / 2)
         values = [time.strftime("%d-%m-%Y %H:%M"), "", "", ""]
         if str(message.chat.id) == config['telegram']['person_1_tg_id']:
             debtor = "Ани"
@@ -78,6 +78,14 @@ def process_amount(message):
         msg = bot.reply_to(message, "Не получается преобразовать сообщение в число, попробуй еще раз")
         bot.register_next_step_handler(
             msg, lambda m: process_amount(m))
+
+
+def is_float(string):
+    try:
+        float(string.replace(",", "."))
+        return True
+    except ValueError:
+        return False
 
 
 def process_description(message, *values):
