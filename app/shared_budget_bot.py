@@ -90,7 +90,7 @@ def is_float(string):
 
 def process_description(message, *values):
     if values:
-        values[0][1] = message.text
+        values[0][1] = "\"{}\"".format(message.text)
         insert_raw(build_service(), values[0])
         bot.reply_to(message, "Готово!")
 
