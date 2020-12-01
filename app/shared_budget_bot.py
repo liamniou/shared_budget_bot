@@ -71,7 +71,7 @@ def process_amount(message):
             debtor = "Стаса"
             values[3] = half_of_amount
         msg = bot.reply_to(
-            message, "Я запишу {} BYN на счет {}. Теперь введи описание".format(half_of_amount, debtor))
+            message, "Я запишу {} SEK на счет {}. Теперь введи описание".format(half_of_amount, debtor))
         bot.register_next_step_handler(
             msg, lambda m: process_description(m, values))
     else:
