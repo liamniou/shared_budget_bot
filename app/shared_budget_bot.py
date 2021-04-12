@@ -66,6 +66,12 @@ def greet_new_user(message):
     )
 
 
+@bot.message_handler(commands=["balance"])
+def send_balance(message):
+    log.info(message.text)
+    notify_about_balance()
+
+
 @bot.message_handler(content_types=["text"])
 def process_amount(message):
     if is_float(message.text):
