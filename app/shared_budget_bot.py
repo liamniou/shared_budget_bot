@@ -117,7 +117,7 @@ def generate_markup():
     button_4 = types.KeyboardButton("🍸 Отдых")
     button_5 = types.KeyboardButton("🏠 Аренда")
     button_6 = types.KeyboardButton("🚌 Транспорт")
-    button_7 = types.KeyboardButton("🧾 Платежи")
+    button_7 = types.KeyboardButton("💧 Платежи")
     button_8 = types.KeyboardButton("📦 Другое")
     button_9 = types.KeyboardButton("💸 Расчет")
     markup.add(button_1, button_2, button_3)
