@@ -10,4 +10,4 @@ RUN pip install -r requirements.txt
 COPY ./app ./
 
 # Run bot when the container launches
-CMD ["python", "shared_budget_bot.py"]
+CMD ["python3", "shared_budget_bot.py"]
