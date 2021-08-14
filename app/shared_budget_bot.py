@@ -1,16 +1,13 @@
 # !/usr/bin/python3
 # -*- coding: utf-8 -*-
 import configparser
-import time
 import logging as log
 import os.path
-import pickle
+import time
+
+import gspread
 import telebot
-from datetime import date
 from telebot import types
-from googleapiclient.discovery import build
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
 
 
 class Config:
@@ -37,9 +34,8 @@ class Config:
         self.config["telegram"]["person_1_tg_id"] = "TG_ID_OF_FIRST_PERSON"
         self.config["telegram"]["person_2_tg_id"] = "TG_ID_OF_SECOND_PERSON"
         self.config["sheets"] = {}
-        self.config["sheets"]["scope"] = " https://www.googleapis.com/auth/spreadsheets"
         self.config["sheets"]["spreadsheet_id"] = "SPREADSHEET_ID"
-        self.config["sheets"]["sheet_id"] = "SHEET_ID"
+        self.config["sheets"]["sheet_name"] = "Expenses"
 
         with open(self.config_file_path, "w") as config_file:
             self.config.write(config_file)
@@ -50,10 +46,14 @@ class Config:
 
 
 config = Config().get()
-SCOPES = [config["sheets"]["scope"]]
-SPREADSHEET_ID = config["sheets"]["spreadsheet_id"]
-SHEET_ID = config["sheets"]["sheet_id"]
 bot = telebot.TeleBot(config["telegram"]["token"], threaded=False)
+gc = gspread.service_account(
+    filename=os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "service_account.json"
+    )
+)
+spreadsheet = gc.open_by_key(config["sheets"]["spreadsheet_id"])
+worksheet = spreadsheet.worksheet(config["sheets"]["sheet_name"])
 
 
 @bot.message_handler(commands=["start", "help"])
@@ -74,19 +74,38 @@ def send_balance(message):
 
 @bot.message_handler(content_types=["text"])
 def process_amount(message):
-    if is_float(message.text):
-        half_of_amount = str(float(message.text.replace(",", ".")) / 2)
-        values = [time.strftime("%d-%m-%Y %H:%M"), "", "", ""]
-        if str(message.chat.id) == config["telegram"]["person_1_tg_id"]:
+    message_text = message.text.replace(",", ".")
+    if is_float(eval(message_text)):
+        half_of_amount = eval(message_text) / 2
+        values = [time.strftime("%d-%m-%Y %H:%M"), "", "", "", ""]
+        if (
+            str(message.chat.id) == config["telegram"]["person_1_tg_id"]
+            and half_of_amount > 0
+        ):
             debtor = "Ани"
-            values[2] = half_of_amount
-        if str(message.chat.id) == config["telegram"]["person_2_tg_id"]:
-            debtor = "Стаса"
             values[3] = half_of_amount
+        if (
+            str(message.chat.id) == config["telegram"]["person_1_tg_id"]
+            and half_of_amount < 0
+        ):
+            debtor = "Стаса"
+            values[4] = half_of_amount * -1
+        if (
+            str(message.chat.id) == config["telegram"]["person_2_tg_id"]
+            and half_of_amount > 0
+        ):
+            debtor = "Стаса"
+            values[4] = half_of_amount
+        if (
+            str(message.chat.id) == config["telegram"]["person_2_tg_id"]
+            and half_of_amount < 0
+        ):
+            debtor = "Ани"
+            values[3] = half_of_amount * -1
         markup = generate_markup()
         msg = bot.reply_to(
             message,
-            f"Я запишу {half_of_amount} SEK на счет {debtor}. Теперь выбери категорию",
+            f"Я запишу {abs(half_of_amount)} SEK на счет {debtor}. Теперь выбери категорию",
             reply_markup=markup,
         )
         bot.register_next_step_handler(msg, lambda m: process_category(m, values))
@@ -99,7 +118,7 @@ def process_amount(message):
 
 def is_float(string):
     try:
-        float(string.replace(",", "."))
+        float(string)
         return True
     except ValueError:
         return False
@@ -127,95 +146,42 @@ def generate_markup():
     return markup
 
 
-def process_category(message, *values):
+def process_category(message, values):
     if values:
         category = message.text
+        values[1] = category
         markup = types.ReplyKeyboardRemove(selective=False)
         message = bot.reply_to(message, "Теперь введи описание", reply_markup=markup)
         bot.register_next_step_handler(
-            message, lambda m: process_description(category, m, values)
+            message, lambda m: process_description(m, values)
         )
 
 
-def process_description(category, message, *values):
+def process_description(message, values):
     if values:
-        listed_values = list_it(values)[0][0]
-        listed_values[1] = f'"{category}", "{message.text}"'
-        insert_message = ", ".join(listed_values)
-        log.info(insert_message)
-        insert_raw(build_service(), insert_message)
+        description = message.text
+        values[2] = description
+        insert_raw(values)
         bot.reply_to(message, "Готово!")
 
 
-def build_service():
-    creds = None
-    # The file backup_token.pickle stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
-    if os.path.exists("token.pickle"):
-        with open("token.pickle", "rb") as token:
-            creds = pickle.load(token)
-    # If there are no (valid) credentials available, let the user log in.
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            log.info("Credentials are expired")
-            creds.refresh(Request())
-        else:
-            log.info("Credentials don't exist")
-            flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
-            creds = flow.run_local_server()
-        # Save the credentials for the next run
-        with open("token.pickle", "wb") as token:
-            pickle.dump(creds, token)
+def insert_raw(insert_text):
+    print(f"Inserting {insert_text}")
+    worksheet.insert_row(values=insert_text, index=4)
 
-    return build("sheets", "v4", credentials=creds)
-
-
-def insert_raw(service, insert_text):
-    requests = [
-        {
-            "insertRange": {
-                "range": {"sheetId": SHEET_ID, "startRowIndex": 3, "endRowIndex": 4},
-                "shiftDimension": "ROWS",
-            }
-        },
-        {
-            "pasteData": {
-                "data": insert_text,
-                "type": "PASTE_NORMAL",
-                "delimiter": ",",
-                "coordinate": {"sheetId": SHEET_ID, "rowIndex": 3},
-            }
-        },
-    ]
-
-    body = {"requests": requests}
-    service.spreadsheets().batchUpdate(
-        spreadsheetId=SPREADSHEET_ID, body=body
-    ).execute()
     return 0
 
 
 def notify_about_balance():
-    service = build_service()
-    request = (
-        service.spreadsheets()
-        .values()
-        .get(
-            spreadsheetId=SPREADSHEET_ID,
-            range="I2",
-            valueRenderOption="UNFORMATTED_VALUE",
-            dateTimeRenderOption="SERIAL_NUMBER",
-        )
-    )
-    response = request.execute()
-    cell_value = response["values"][0][0]
+    cell_value = float(worksheet.cell(2, 9).value)
     if cell_value > 0:
-        message = f"Доброе утро! На сегодняшний день Стас заплатил на {int(cell_value)} SEK больше, чем Аня"
+        message = f"Привет! На сегодняшний день Стас заплатил на {cell_value} SEK больше, чем Аня"
     else:
-        message = f"Доброе утро! На сегодняшний день Аня заплатила на {int(abs(cell_value))} SEK больше, чем Стас"
+        message = f"Привет! На сегодняшний день Аня заплатила на {abs(cell_value)} SEK больше, чем Стас"
     bot.send_message(config["telegram"]["person_1_tg_id"], message)
     bot.send_message(config["telegram"]["person_2_tg_id"], message)
+
+    return 0
 
 
 if __name__ == "__main__":
