@@ -219,6 +219,4 @@ def notify_about_balance():
 
 
 if __name__ == "__main__":
-    if date.today().strftime("%d") == "1":
-        notify_about_balance()
     bot.polling()
